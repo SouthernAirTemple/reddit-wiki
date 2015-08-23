@@ -1,0 +1,137 @@
+Created an all-in-one guide in the wiki on building a Linux/RHEL Infrastructure in AWS with the aws cli, Puppet, and Terraform. Any feedback is appreciated!  
+
+tl;dr: Fork repo. Run terraform init github.com/hashicorp/terraform/examples/aws-tw. Run terraform apply -var 'key_name=terraform' -var 'key_path=/Users/jsmith/.ssh/terraform.pem' where that's your aws key. Boom. One free tier puppet infrastructure for you, hold the aws cli.   
+
+This page is meant to document useful information related to AWS. We'll be documenting commands by running through the creation of a basic build out that'll include VPCs, subnets, security groups, naming conventions, and AMIs and the like, after which I'll add a Terraform configuration to tie it all together and how to plan it out. The network diagram for the build is currently located [here](https://github.com/SouthernAirTemple/reddit-wiki/blob/master/aws/reddit-supercloud.png) but may be subject to change. The primary goal is to make this as exportable as possible by ensuring we use generic RHEL images instead of AWS NAT ones and building the subnet around that, and using Terraform instead of something like CloudFormation or OpsWorks. I also highly recommend using any prefered kanban app for schedule management with breaking down these tasks, something like a couple instances a day broken down into individual tasks if you want to take it slow.  
+
+Also, if you want to just grab the terraform files feel free to do so. 
+
+### PREREQUISITES
+
+    See wiki_variabls file and modify and export as needed. 
+
+### INITIAL CONFIG
+
+1) Setting the hostname with cloud-init
+
+AWS (and Rackspace, actually) uses cloud-init config management tool (think Ansible for Cloud Providers. Uses YAML format) to set the hostname and other initial host settings. Just run the following command to ensure the host name gets set:
+
+    sudo sh -c "echo '# /etc/cloud/cloud.cfg.d/defaults.cfg
+    # cloud-config
+    # hostname reverts if not added 
+    hostname: myhostname
+    fqdn: myhostname.mydomainname' > /etc/cloud/cloud.cfg.d/defaults.cfg"
+
+2) Configure aws cli
+
+You can view the exact region name to use by visiting http://docs.aws.amazon.com/general/latest/gr/rande.html#ec2_region. When it asks you which region, copy-paste the field right next to Region Name. For Us East, use us-east-1 for the name. Use default text output format so our eyes don't bleed. Speaking of which, enjoy this one-liner:  
+
+     aws configure set access_key "$(cat $CREDENTIALS|tr '" ,' " "|awk '{print $2}'|tail -n1)" && aws configure set secret_key "$(cat $CREDENTIALS|tr '" ,' " "|awk '{print $1}'|tail -n1)" && aws configure set region $EC2_REGION
+
+### VPC
+
+Create the 10.0.0.0/16 VPC we'll be using with default tenancy so we don't get charged for dedicated hardware.
+
+    aws ec2 create-vpc --cidr-block 10.0.0.0/16 --instance-tenancy default
+
+Change the name to $ORG_NAME. Your vpc id is returned from above (vpc-123456) 
+
+    aws ec2 create-tags --resource $VPC_ID --tag "Value=$ORG_NAME,Key=Name"
+
+Create an internet gateway to the 10.0.0.0/16 VPC, enabling public internet access. Set value of IG_ID to returned value from first command. This prints only the internet gateway ID with awk.  
+
+    aws ec2 create-internet-gateway|awk '{print $2}'
+
+    aws ec2 create-tags --resource $IG_ID --tag "Value=$ORG_NAME,Key=Name"
+
+    aws ec2 attach-internet-gateway --internet-gateway-id $IG_ID --vpc-id $VPC_ID
+
+### SUBNETTING
+
+Create the 10.0.1.0/24 subnet and change to $ORG_NAME. Note the minimum host address we can use outside of the reserved range is 10.0.1.4. 
+
+    aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.0.1.0/24
+    aws ec2 create-tags --resource $SUB_ID --tag "Value=$ORG_NAME-$ENV_STATUS,Key=Name"
+
+### SECURITY GROUPS
+
+Create the following security groups policies:
+
+1) sshlb-$ENV_STATUS-haproxy => allow all in on port 22 (forwarding port) and port 2222 (ssh on server). All from monit-$ENV_STATUS-nagios.
+
+    aws ec2 create-security-group --group-name sshlb-stage-haproxy --description "sshlb security group" --vpc-id $VPC_ID
+
+    aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 22 --cidr 0.0.0.0/0
+
+    aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 2222 --cidr 0.0.0.0/0
+
+access-$ENV_STATUS-bastion => allow port 22 from sshlb-$ENV_STATUS-haproxy security group. All from monit-$ENV_STATUS-nagios.
+dhcp-$ENV_STATUS-dhcp => allow 22 from access-$ENV_STATUS-bastion. All for 67 and 68. All from monit-$ENV_SATUS-nagios. 
+monit-$ENV_STATUS-nagios => allow 22 from access-$ENV_STATUS-bastion.
+weblb-$ENV_STATUS-haproxy => allow all on port 80, 443. Allow 22 from access-$ENV_STATUS-bastion. All from monit-$ENV_STATUS-nagios.
+web-$ENV_STATUS-nginx => allow 443,80 from weblb-$ENV_STATUS-haproxy. All from monit-$ENV_STATUS-nagios.
+db-$ENV_STATUS-galera => allow 3306 from web-$ENV_STATUS-nginx. All from monit-$ENV_STATUS-nagios.
+
+### INSTANCES
+
+1) sshlb-stage-haproxy-1a (t2.micro. 10GB) => load balancer for SSH bastion to access all other instances. 
+
+    aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type t2.micro --key-name ubuntu-local --security-group-ids $SG_ID --subnet-id $SUB_ID --associate-public-ip-address --private-ip-address 10.0.1.4 --block-device-mappings "[{\"DeviceName\": \"/dev/sdh\",\"Ebs\":{\"VolumeSize\":10}}]"
+
+    aws ec2 create-tags --resource i-352ea1f5 --tag "Value=sshlb-stage-haproxy-1a,Key=Name"
+    
+2) access-stage-bastion-1a => first ssh instance 
+
+3) access-stage-bastion-1b => second ssh instance
+
+4) dhcp-stage-dhcp-1a => our dhcp server. Will be used for assigning private IP addresses.
+
+
+### Bootstrapping
+
+Our instances need to be able to do two things: change their hostnames. Bootstrap themselves to the master. 
+
+### Common Commands
+
+Listing things (apply Name=tag:Name,Values="myvalue" filter for any given describe option)
+
+0) List all available items for querying for $INST_NAME
+
+    aws ec2 describe-instances --filters "Name=tag:Name,Values=$INST_NAME" --output text --query 'Reservations[*]'
+
+1) Grab private IP address of an instance with the name "$INST_NAME" 
+
+    aws ec2 describe-instances --filters "Name=tag:Name,Values=$INST_NAME" --output text --query 'Reservations[*].Instances[*].PrivateIpAddress'
+
+2) Grab instance ID 
+
+    aws ec2 describe-instances --filters "Name=tag:Name,Values=$INST_NAME" --output text --query 'Reservations[*].Instances[*].InstanceId'
+
+3) List instance state 
+
+    aws ec2 describe-instance-status --instance-ids $INST_ID --output text --query 'InstanceStatuses[*].InstanceState'
+
+### Fixing mistakes 
+
+1) Delete instance
+
+    aws ec2 terminate-instances --instance-ids $INST_ID 
+    
+
+### Terraforming
+
+All of the terraforming templates are available in the repo. Our servers need to be able to do a couple of things in general:
+
+1) Create security groups
+
+2) Change their hostname
+
+3) Bootstrap themselves to the puppet master 
+
+### LINKS
+
+Config files: https://github.com/SouthernAirTemple/reddit-wiki/tree/master/aws 
+
+Terraforming: https://github.com/dtan4/terraforming
+
+
