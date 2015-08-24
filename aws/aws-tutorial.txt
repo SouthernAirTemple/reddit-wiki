@@ -89,8 +89,6 @@ curl -o ~/sshlb-stage-haproxy-1a.sh https://raw.githubusercontent.com/SouthernAi
 
 bash ~/sshlb-stage-haproxy-1a.sh'
 
-    aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type t2.micro --key-name ubuntu-local --security-group-ids $SG_ID --subnet-id $SUB_ID --associate-public-ip-address --private-ip-address 10.0.1.4 --block-device-mappings "[{\"DeviceName\": \"/dev/sdh\",\"Ebs\":{\"VolumeSize\":10}}]" --user-data "curl -o ~/sshlb-stage-haproxy-1a.sh https://raw.githubusercontent.com/SouthernAirTemple/reddit-wiki/master/aws/sshlb-stage-haproxy-1a.sh && bash ~/sshlb-stage-haproxy-1a.sh"
-
     aws ec2 create-tags --resource $INST_ID --tag "Value=sshlb-stage-haproxy-1a,Key=Name"
         
 
