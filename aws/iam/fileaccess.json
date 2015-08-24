@@ -2,7 +2,7 @@
   "Version": "2015-08-24",
   "Statement": {
     "Effect": "Allow",
-    "Action": "s3:*",
+    "Action": "*",
     "Resource": "arn:aws:s3:::zombocomfiles"
   }
 }
