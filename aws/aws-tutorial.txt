@@ -28,7 +28,7 @@ You can view the exact region name to use by visiting http://docs.aws.amazon.com
 
      aws configure set access_key "$(cat $CREDENTIALS|tr '" ,' " "|awk '{print $2}'|tail -n1)" && aws configure set secret_key "$(cat $CREDENTIALS|tr '" ,' " "|awk '{print $1}'|tail -n1)" && aws configure set region $EC2_REGION
 
-### VPC
+### VPC & ROUTE TABLE 
 
 Create the 10.0.0.0/16 VPC we'll be using with default tenancy so we don't get charged for dedicated hardware.
 
@@ -41,10 +41,19 @@ Change the name to $ORG_NAME. Your vpc id is returned from above (vpc-123456)
 Create an internet gateway to the 10.0.0.0/16 VPC, enabling public internet access. Set value of IG_ID to returned value from first command. This prints only the internet gateway ID with awk.  
 
     aws ec2 create-internet-gateway|awk '{print $2}'
-
     aws ec2 create-tags --resource $IG_ID --tag "Value=$ORG_NAME,Key=Name"
-
     aws ec2 attach-internet-gateway --internet-gateway-id $IG_ID --vpc-id $VPC_ID
+
+Associate default route table for 10.0.0.0/16 network to 10.0.1.0/24 subnet
+    # using built-in filter might be faster if this list was huge. 
+    aws ec2 describe-vpcs|grep $ORG_NAME -B1
+    aws ec2 describe-subnets|grep $ORG_NAME -B1
+    aws ec2 describe-route-tables|grep $VPC_ID
+    aws ec2 create-tags --resource $RT_ID --tag "Value=$ORG_NAME,Key=Name"
+
+Create new route going from our route table to internet gateway
+    
+    aws ec2 create-route --route-table-id $RT_ID --destination-cidr-block 0.0.0.0/0 --gateway-id $GW_ID 
 
 ### SUBNETTING
 
@@ -60,26 +69,31 @@ Create the following security groups policies:
 1) sshlb-$ENV_STATUS-haproxy => allow all in on port 22 (forwarding port) and port 2222 (ssh on server). All from monit-$ENV_STATUS-nagios.
 
     aws ec2 create-security-group --group-name sshlb-stage-haproxy --description "sshlb security group" --vpc-id $VPC_ID
-
     aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 22 --cidr 0.0.0.0/0
-
     aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 2222 --cidr 0.0.0.0/0
 
-access-$ENV_STATUS-bastion => allow port 22 from sshlb-$ENV_STATUS-haproxy security group. All from monit-$ENV_STATUS-nagios.
-dhcp-$ENV_STATUS-dhcp => allow 22 from access-$ENV_STATUS-bastion. All for 67 and 68. All from monit-$ENV_SATUS-nagios. 
-monit-$ENV_STATUS-nagios => allow 22 from access-$ENV_STATUS-bastion.
-weblb-$ENV_STATUS-haproxy => allow all on port 80, 443. Allow 22 from access-$ENV_STATUS-bastion. All from monit-$ENV_STATUS-nagios.
-web-$ENV_STATUS-nginx => allow 443,80 from weblb-$ENV_STATUS-haproxy. All from monit-$ENV_STATUS-nagios.
+    access-$ENV_STATUS-bastion => allow port 22 from sshlb-$ENV_STATUS-haproxy security group. All from monit-$ENV_STATUS-nagios.
+    dhcp-$ENV_STATUS-dhcp => allow 22 from access-$ENV_STATUS-bastion. All for 67 and 68. All from monit-$ENV_SATUS-nagios. 
+    monit-$ENV_STATUS-nagios => allow 22 from access-$ENV_STATUS-bastion.
+    weblb-$ENV_STATUS-haproxy => allow all on port 80, 443. Allow 22 from access-$ENV_STATUS-bastion. All from monit-$ENV_STATUS-nagios.
+    web-$ENV_STATUS-nginx => allow 443,80 from weblb-$ENV_STATUS-haproxy. All from monit-$ENV_STATUS-nagios.
 db-$ENV_STATUS-galera => allow 3306 from web-$ENV_STATUS-nginx. All from monit-$ENV_STATUS-nagios.
 
 ### INSTANCES
 
 1) sshlb-stage-haproxy-1a (t2.micro. 10GB) => load balancer for SSH bastion to access all other instances. 
 
-    aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type t2.micro --key-name ubuntu-local --security-group-ids $SG_ID --subnet-id $SUB_ID --associate-public-ip-address --private-ip-address 10.0.1.4 --block-device-mappings "[{\"DeviceName\": \"/dev/sdh\",\"Ebs\":{\"VolumeSize\":10}}]"
+    aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type t2.micro --key-name ubuntu-local --security-group-ids $SG_ID --subnet-id $SUB_ID --associate-public-ip-address --private-ip-address 10.0.1.4 --block-device-mappings "[{\"DeviceName\": \"/dev/sdh\",\"Ebs\":{\"VolumeSize\":10}}]" --user-data '#!/usr/bin/bash
 
-    aws ec2 create-tags --resource i-352ea1f5 --tag "Value=sshlb-stage-haproxy-1a,Key=Name"
-    
+curl -o ~/sshlb-stage-haproxy-1a.sh https://raw.githubusercontent.com/SouthernAirTemple/reddit-wiki/master/aws/sshlb-stage-haproxy-1a.sh
+
+bash ~/sshlb-stage-haproxy-1a.sh'
+
+    aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type t2.micro --key-name ubuntu-local --security-group-ids $SG_ID --subnet-id $SUB_ID --associate-public-ip-address --private-ip-address 10.0.1.4 --block-device-mappings "[{\"DeviceName\": \"/dev/sdh\",\"Ebs\":{\"VolumeSize\":10}}]" --user-data "curl -o ~/sshlb-stage-haproxy-1a.sh https://raw.githubusercontent.com/SouthernAirTemple/reddit-wiki/master/aws/sshlb-stage-haproxy-1a.sh && bash ~/sshlb-stage-haproxy-1a.sh"
+
+    aws ec2 create-tags --resource $INST_ID --tag "Value=sshlb-stage-haproxy-1a,Key=Name"
+        
+
 2) access-stage-bastion-1a => first ssh instance 
 
 3) access-stage-bastion-1b => second ssh instance
