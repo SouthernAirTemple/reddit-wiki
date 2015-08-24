@@ -3,6 +3,6 @@
   "Statement": {
     "Effect": "Allow",
     "Action": "*",
-    "Resource": "*"
+    "Resource": "arn:aws:s3:::"
   }
 }
