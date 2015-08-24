@@ -1,4 +1,4 @@
-sudo sh -c "echo '# /etc/cloud/cloud.cfg.d/defaults.cfg
+sh -c "echo '# /etc/cloud/cloud.cfg.d/defaults.cfg
 # cloud-config
 # hostname reverts if not added 
 hostname: sshlb-stage-haproxy-1a   
