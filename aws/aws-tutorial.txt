@@ -26,7 +26,7 @@ AWS (and Rackspace, actually) uses cloud-init config management tool (think Ansi
 
 You can view the exact region name to use by visiting http://docs.aws.amazon.com/general/latest/gr/rande.html#ec2_region. When it asks you which region, copy-paste the field right next to Region Name. For Us East, use us-east-1 for the name. Use default text output format so our eyes don't bleed. Speaking of which, enjoy this one-liner:  
 
-     aws configure set access_key "$(cat $CREDENTIALS|tr '" ,' " "|awk '{print $2}'|tail -n1)" && aws configure set secret_key "$(cat $CREDENTIALS|tr '" ,' " "|awk '{print $1}'|tail -n1)" && aws configure set region $EC2_REGION
+     aws configure set access_key "$(cat $CREDENTIALS|tr '" ,' " "|awk '{print $2}'|tail -n1)" && aws configure set secret_key "$(cat $CREDENTIALS|tr '" ,' " "|awk '{print $1}'|tail -n1)" && aws configure set region $EC2_REGION && rm -f $CREDENTIALS
 
 ### VPC & ROUTE TABLE 
 
@@ -62,6 +62,15 @@ Create the 10.0.1.0/24 subnet and change to $ORG_NAME. Note the minimum host add
     aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.0.1.0/24
     aws ec2 create-tags --resource $SUB_ID --tag "Value=$ORG_NAME-$ENV_STATUS,Key=Name"
 
+### IAM 
+
+We're going to createan IAM group that'll allow S3 access and back up our wordpress database to the cloud each night. In the even a server goes away, it'll be a matter of spinning up a clone, grabbing the database, and importing the data. 
+
+1) Create access group for S3 and grant full access
+
+    aws iam create-group --group-name s3Access 
+    aws iam list-policies|grep -i s3
+
 ### SECURITY GROUPS
 
 Create the following security groups policies:
@@ -85,7 +94,7 @@ db-$ENV_STATUS-galera => allow 3306 from web-$ENV_STATUS-nginx. All from monit-$
 
     aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type t2.micro --key-name ubuntu-local --security-group-ids $SG_ID --subnet-id $SUB_ID --associate-public-ip-address --private-ip-address 10.0.1.4 --block-device-mappings "[{\"DeviceName\": \"/dev/sdh\",\"Ebs\":{\"VolumeSize\":10}}]" --user-data '#!/usr/bin/bash
 
-curl -o ~/sshlb-stage-haproxy-1a.sh https://raw.githubusercontent.com/SouthernAirTemple/reddit-wiki/master/aws/sshlb-stage-haproxy-1a.sh
+curl -o ~/sshlb-stage-haproxy-1a.sh https://raw.githubusercontent.com/SouthernAirTemple/reddit-wiki/master/aws/instances/sshlb-stage-haproxy-1a.sh
 
 bash ~/sshlb-stage-haproxy-1a.sh'
 
@@ -130,9 +139,9 @@ Listing things (apply Name=tag:Name,Values="myvalue" filter for any given descri
     aws ec2 terminate-instances --instance-ids $INST_ID 
     
 
-### Terraforming
+### Terraform
 
-All of the terraforming templates are available in the repo. Our servers need to be able to do a couple of things in general:
+All of the terraform templates are available in the repo. Our servers need to be able to do a couple of things in general:
 
 1) Create security groups
 
