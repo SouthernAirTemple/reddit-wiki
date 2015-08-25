@@ -1,0 +1,10 @@
+# hosts file for pre-bind9 instances. After bind9 gets configured we use 
+# as nameserver for internal hosts
+127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+10.0.1.4    sshlb-stage-haproxy-1a sshlb-stage-haproxy-1a.internal.example.com
+10.0.1.6    ssh-stage-bastion-1a ssh-stage-bastion-1a.internal.example.com
+10.0.1.7    ssh-stage-bastion-1b ssh-stage-bastion-1b.internal.example.com
+10.0.1.12   dns-stage-bind-1a dns-stage-bind-1a.internal.example.com
+10.0.1.14   config-stage-puppet-1a config-stage-puppet-1a.internal.example.com
+10.0.1.19   monit-stage-nagios-1a monit-stage-nagios-1a.internal.example.com 
