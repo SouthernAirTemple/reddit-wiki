@@ -78,27 +78,31 @@ We're going to createan IAM group that'll allow S3 access and back up our wordpr
 
 1) Create the access roles
 
-    aws iam create-role --role-name S3ConfigAccess --assume-role-policy-document https://raw.githubusercontent.com/SouthernAirTemple/reddit-wiki/master/aws/iam/assumerole.json
+    aws iam create-role --role-name S3ConfigAccess --assume-role-policy-document $GITHUB/iam/assumerole.json
 
-    aws iam create-role --role-name S3FileAccess --assume-role-policy-document https://raw.githubusercontent.com/SouthernAirTemple/reddit-wiki/master/aws/iam/assumerole.json
+    aws iam create-role --role-name S3FileAccess --assume-role-policy-document $GITHUB/iam/assumerole.json
     
-    aws iam create-role --role-name S3DBAccess --assume-role-policy-document https://raw.githubusercontent.com/SouthernAirTemple/reddit-wiki/master/aws/iam/assumerole.json
+    aws iam create-role --role-name S3DBAccess --assume-role-policy-document $GITHUB/iam/assumerole.json
 
 2) Attach the policy to grant access to s3 for our access roles
 
-    aws iam put-role-policy --role-name S3FileAccess --policy-name S3FileAccess --policy-document https://raw.githubusercontent.com/SouthernAirTemple/reddit-wiki/master/aws/iam/fileaccess.json 
+    aws iam put-role-policy --role-name S3FileAccess --policy-name S3FileAccess --policy-document $GITHUB/iam/fileaccess.json 
 
-    aws iam put-role-policy --role-name S3DBAccess --policy-name S3DBAccess --policy-document https://raw.githubusercontent.com/SouthernAirTemple/reddit-wiki/master/aws/iam/dbaccess.json
+    aws iam put-role-policy --role-name S3DBAccess --policy-name S3DBAccess --policy-document $GITHUB/iam/dbaccess.json
 
-    aws iam put-role-policy --role-name S3ConfigAccess --policy-name S3ConfigAccess --policy-document https://raw.githubusercontent.com/SouthernAirTemple/reddit-wiki/master/aws/iam/configaccess.json
+    aws iam put-role-policy --role-name S3ConfigAccess --policy-name S3ConfigAccess --policy-document $GITHUB/iam/configaccess.json
 
 3) Create instance profile 
 
-    aws iam create-instance-profile --instance-profile-name s3Access
+    aws iam create-instance-profile --instance-profile-name S3ConfigAccess 
+    aws iam create-instance-profile --instance-profile-name S3FileAccess 
+    aws iam create-instance-profile --instance-profile-name S3DBAccess 
 
 4) Add role to instance profile
 
-    aws iam add-role-to-instance-profile --instance-profile-name s3Access --role-name s3Access
+    aws iam add-role-to-instance-profile --instance-profile-name S3ConfigAccess --role-name S3ConfigAccess
+    aws iam add-role-to-instance-profile --instance-profile-name S3FileAccess --role-name S3FileAccess
+    aws iam add-role-to-instance-profile --instance-profile-name S3DBAccess --role-name S3DBAccess
 
 
 ### SECURITY GROUPS
@@ -122,11 +126,9 @@ db-$ENV_STATUS-galera => allow 3306 from web-$ENV_STATUS-nginx. All from monit-$
 
 1) sshlb-stage-haproxy-1a (t2.micro. 10GB) => load balancer for SSH bastion to access all other instances. 
 
-    aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type t2.micro --key-name ubuntu-local --security-group-ids $SG_ID --subnet-id $SUB_ID --associate-public-ip-address --private-ip-address 10.0.1.4 --block-device-mappings "[{\"DeviceName\": \"/dev/sdh\",\"Ebs\":{\"VolumeSize\":10}}]" --user-data '#!/usr/bin/bash
+    aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type $INST_SIZE --key-name $KEY_NAME --security-group-ids $SG_ID --subnet-id $SUB_ID --associate-public-ip-address --private-ip-address 10.0.1.4 --block-device-mappings "[{\"DeviceName\": \"/dev/sdh\",\"Ebs\":{\"VolumeSize\":10}}]" --iam-instance-profile Name=$S3_CONF --user-data '#!/usr/bin/bash
 
-curl -o ~/sshlb-stage-haproxy-1a.sh https://raw.githubusercontent.com/SouthernAirTemple/reddit-wiki/master/aws/instances/sshlb-stage-haproxy-1a.sh
-
-bash ~/sshlb-stage-haproxy-1a.sh'
+'\"bash <( curl \"$GITHUB/ec2/sshlb-stage-haproxy-1a.sh\")"
 
     aws ec2 create-tags --resource $INST_ID --tag "Value=sshlb-stage-haproxy-1a,Key=Name"
         
@@ -183,6 +185,4 @@ All of the terraform templates are available in the repo. Our servers need to be
 
 Config files: https://github.com/SouthernAirTemple/reddit-wiki/tree/master/aws 
 
-Terraforming: https://github.com/dtan4/terraforming
-
-
+AWS CLI Reference: http://docs.aws.amazon.com/cli/latest/reference
