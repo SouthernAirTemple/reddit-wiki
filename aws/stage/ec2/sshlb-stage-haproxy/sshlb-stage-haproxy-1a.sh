@@ -9,6 +9,13 @@ rm -fr /var/lib/cloud/instances
 
 cloud-init init  
 
-sudo yum install haproxy-1.5.4-4.el7_1 -y
+# turn off selinux as is active with ami
+sed 's/SELINUX=enabled/SELINUX=disabled/g' -i /etc/selinux/config
 
-sudo yum install vim
+setenforce 0
+
+yum install haproxy-1.5.4-4.el7_1 -y
+
+yum install vim -y
+
+
