@@ -1,0 +1,7 @@
+Host *bastion*
+    ForwardAgent yes
+    CheckHostIp no
+
+Host *haproxy*
+    ForwardAgent yes
+    CheckHostIp no
