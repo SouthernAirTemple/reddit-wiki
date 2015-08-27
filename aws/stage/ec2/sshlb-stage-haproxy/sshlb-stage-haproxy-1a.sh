@@ -13,7 +13,7 @@ cloud-init init
 sed 's/SELINUX=enabled/SELINUX=disabled/g' -i /etc/selinux/config
 
 # ensure SSH is listening on port 2222 rather than 22 for forwarding
-sed 's/#Port 22/Port 2222/g' /etc/ssh/sshd_config
+sed 's/#Port 22/Port 2222/g' -i /etc/ssh/sshd_config
 
 systemctl restart sshd 
 
