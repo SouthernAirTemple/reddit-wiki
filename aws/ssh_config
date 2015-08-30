@@ -1,7 +1,13 @@
+Host *
+    # send null packet ever 60 seconds to keep connection alive
+    ServerAliveInterval 60
+
 Host *bastion*
     ForwardAgent yes
     CheckHostIp no
+    StrictHostKeyChecking no 
 
 Host *haproxy*
     ForwardAgent yes
     CheckHostIp no
+    StrictHostKeyChecking no
