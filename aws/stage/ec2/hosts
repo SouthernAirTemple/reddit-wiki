@@ -8,3 +8,4 @@
 10.0.1.12   dns-stage-bind-1a dns-stage-bind-1a.internal.example.com
 10.0.1.14   config-stage-puppet-1a config-stage-puppet-1a.internal.example.com
 10.0.1.19   monit-stage-nagios-1a monit-stage-nagios-1a.internal.example.com 
+10.0.1.23   storage-stage-nas-1a storage-stage-nas-1a.internal.example.com
