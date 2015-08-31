@@ -24,4 +24,6 @@ yum clean all
 
 yum install puppet-server 3.8 -y
 
+mv /reddit-wiki/aws/stage/ec2/config-stage-puppet/puppet.conf /etc/puppet/puppet.conf
+
 screen -d -m puppet master --verbose --no-daemonize
