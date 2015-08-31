@@ -9,7 +9,7 @@ rm -fr /var/lib/cloud/instances
 
 cloud-init init  
 
-yum install ntp-4.2.6p5-19.el7_1.1
+yum install ntp -y
 
 yum install vim -y
 
@@ -22,6 +22,6 @@ rpm -ivh https://yum.puppetlabs.com/puppetlabs-release-el-7.noarch.rpm
 
 yum clean all
 
-yum install puppet-server 3.8.2-1.el7 -y
+yum install puppet-server 3.8 -y
 
 screen -d -m puppet master --verbose --no-daemonize
