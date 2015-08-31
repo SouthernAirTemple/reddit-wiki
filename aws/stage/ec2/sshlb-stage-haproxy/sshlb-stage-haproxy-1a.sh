@@ -19,8 +19,18 @@ systemctl restart sshd
 
 setenforce 0
 
+yum clean all
+
 yum install haproxy-1.5.4-4.el7_1 -y
 
 yum install vim -y
+
+yum install screen -y
+
+curl -O https://bootstrap.pypa.io/get-pip.py
+
+python get-pip.py
+
+pip install awscli
 
 systemctl start haproxy
