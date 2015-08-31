@@ -22,8 +22,15 @@ rpm -ivh https://yum.puppetlabs.com/puppetlabs-release-el-7.noarch.rpm
 
 yum clean all
 
+curl -O https://bootstrap.pypa.io/get-pip.py
+
+python get-pip.py
+
+pip install awscli
+
 yum install puppet-server 3.8 -y
 
 mv /reddit-wiki/aws/stage/ec2/config-stage-puppet/puppet.conf /etc/puppet/puppet.conf
 
 screen -d -m puppet master --verbose --no-daemonize
+

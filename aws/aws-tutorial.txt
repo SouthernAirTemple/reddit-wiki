@@ -1,14 +1,18 @@
 Created an all-in-one guide in the wiki on building a Linux/RHEL Infrastructure in AWS with the aws cli, Puppet, and Terraform. Any feedback is appreciated!  
 
-tl;dr: Fork repo. Run terraform init github.com/hashicorp/terraform/examples/aws-tw. Run terraform apply -var 'key_name=terraform' -var 'key_path=/Users/jsmith/.ssh/terraform.pem' where that's your aws key. Boom. One free tier puppet infrastructure for you, hold the aws cli.   
+tl;dr: Fork repo. Run terraform init github.com/hashicorp/terraform/examples/aws-tw. Run terraform apply -var 'key_name=terraform' -var 'key_path=/Users/jsmith/.ssh/terraform.pem' where that's your aws key. Boom. One overly engineered dogecoin mining operation for you.  
+
+### INTRO 
 
 This page is meant to document useful information related to AWS. We'll be documenting commands by running through the creation of a basic build out that'll include VPCs, subnets, security groups, naming conventions, and AMIs and the like, after which I'll add a Terraform configuration to tie it all together and how to plan it out. The network diagram for the build is currently located [here](https://github.com/SouthernAirTemple/reddit-wiki/blob/master/aws/reddit-supercloud.png) but may be subject to change. The primary goal is to make this as exportable as possible by ensuring we use generic RHEL images instead of AWS NAT ones and building the subnet around that, and using Terraform instead of something like CloudFormation or OpsWorks. I also highly recommend using any prefered kanban app for schedule management with breaking down these tasks, something like a couple instances a day broken down into individual tasks if you want to take it slow.  
 
-Also, if you want to just grab the terraform files feel free to do so. 
+Also, if you want to just grab the terraform files feel free to apply your heart out. :>)  
 
 ### PREREQUISITES
 
-    See wiki_variabls file and modify and export as needed. 
+Make sure you use ssh-agent agent command and set *bastion* for forwarding in /etc/ssh_config, and use your personal /etc/hosts file to configure the bastion server name and IP. 
+
+See variables.sh file and modify and export as needed. 
 
 ### INITIAL CONFIG
 
@@ -66,11 +70,10 @@ Create the 10.0.1.0/24 subnet and change to $ORG_NAME. Note the minimum host add
 
 We're going to be working with S3 here to create our backups. There will be 3 buckets; configs, files, dbs
 
+    # this will be used to store our config files like Puppet config and CA
     aws s3api create-bucket --bucket zombocomconfigs --create-bucket-configuration LocationConstraint=us-west-1 
 
     aws s3api create-bucket --bucket zombocomfiles --create-bucket-configuration LocationConstraint=us-west-1
-
-    aws s3api create-bucket --bucket zombocomdbs --create-bucket-configuration LocationConstraint=us-west-1
 
 ### IAM 
 
@@ -107,38 +110,86 @@ We're going to createan IAM group that'll allow S3 access and back up our wordpr
 
 ### SECURITY GROUPS
 
-Create the following security groups policies:
+Create the following security groups policies. SG_ID should be changed as needed:
 
-1) sshlb-$ENV_STATUS-haproxy => allow all in on port 22 (forwarding port) and port 2222 (ssh on server). All from monit-$ENV_STATUS-nagios.
+1) monit-$ENV_STATUS-nagios => allow 22 from access-$ENV_STATUS-bastion.
 
-    aws ec2 create-security-group --group-name sshlb-stage-haproxy --description "sshlb security group" --vpc-id $VPC_ID
+    aws ec2 create-security-group --group-name monit-$ENV_STATUS-nagios --description "monitoring security group" --vpc-id $VPC_ID
+
+2) sshlb-$ENV_STATUS-haproxy => allow all in on port 22 (forwarding port) and port 2222 (ssh on server). All from monit-$ENV_STATUS-nagios.
+
+    aws ec2 create-security-group --group-name sshlb-$ENV_STATUS-haproxy --description "sshlb security group" --vpc-id $VPC_ID
     aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 22 --cidr 0.0.0.0/0
     aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 2222 --cidr 0.0.0.0/0
+ 
+3) access-$ENV_STATUS-bastion => allow port 22 from sshlb-$ENV_STATUS-haproxy security group. All from monit-$ENV_STATUS-nagios.
 
-    access-$ENV_STATUS-bastion => allow port 22 from sshlb-$ENV_STATUS-haproxy security group. All from monit-$ENV_STATUS-nagios.
-    dhcp-$ENV_STATUS-dhcp => allow 22 from access-$ENV_STATUS-bastion. All for 67 and 68. All from monit-$ENV_SATUS-nagios. 
-    monit-$ENV_STATUS-nagios => allow 22 from access-$ENV_STATUS-bastion.
-    weblb-$ENV_STATUS-haproxy => allow all on port 80, 443. Allow 22 from access-$ENV_STATUS-bastion. All from monit-$ENV_STATUS-nagios.
-    web-$ENV_STATUS-nginx => allow 443,80 from weblb-$ENV_STATUS-haproxy. All from monit-$ENV_STATUS-nagios.
+    # change SG_ID to below result. $SG_IN to sshlb-$ENV_STATUS-haproxy ID. 
+
+    aws ec2 create-security-group --group-name access-$ENV_STATUS-bastion --description "ssh access security group" --vpc-id $VPC_ID
+
+    aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 22 --source-group "$SG_IN"
+
+4) config-$ENV_STATUS-puppet-1a => allow ports 8140 for puppet agent access, 443 for pe console, 61613 for mcollective. 
+
+    aws ec2 create-security-group --group-name config-$ENV_STATUS-puppet --description "puppet master security group" --vpc-id $VPC_ID 
+
+    SG_ID="CHANGE_TO_ABOVE_RESULT"
+    aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 22 --source-group "$SG_IN"
+    aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 8140 --cidr $STAGE_NET
+    aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 443 --cidr $STAGE_NET
+    aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 61613 --cidr $STAGE_NET
+
+dhcp-$ENV_STATUS-dhcp => allow 22 from access-$ENV_STATUS-bastion. All for 67 and 68. All from monit-$ENV_SATUS-nagios. 
+weblb-$ENV_STATUS-haproxy => allow all on port 80, 443. Allow 22 from access-$ENV_STATUS-bastion. All from monit-$ENV_STATUS-nagios.
+web-$ENV_STATUS-nginx => allow 443,80 from weblb-$ENV_STATUS-haproxy. All from monit-$ENV_STATUS-nagios.
 db-$ENV_STATUS-galera => allow 3306 from web-$ENV_STATUS-nginx. All from monit-$ENV_STATUS-nagios.
 
 ### INSTANCES
 
-1) sshlb-stage-haproxy-1a (t2.micro. 10GB) => load balancer for SSH bastion to access all other instances. 
+1) sshlb-$ENV_STATUS-haproxy-1a (t2.micro. 10GB) => load balancer for SSH bastion to access all other instances. Manually set INST_ID to instance id before tagging. Change $SG_ID to security group for each new instance created with unique group name for instance group (ex: aws ec2 describe-security-groups 2>&1|grep sshlb-stage-haproxy). 
 
-    aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type $INST_SIZE --key-name $KEY_NAME --security-group-ids $SG_ID --subnet-id $SUB_ID --associate-public-ip-address --private-ip-address 10.0.1.4 --block-device-mappings "[{\"DeviceName\": \"/dev/sdh\",\"Ebs\":{\"VolumeSize\":10}}]" --iam-instance-profile Name=$S3_CONF --user-data '#!/usr/bin/bash
+    SG_ID=""
+    aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type $INST_TYPE --key-name $KEY_NAME --security-group-ids $SG_ID --subnet-id $SUB_ID --associate-public-ip-address --private-ip-address 10.0.1.4 --block-device-mappings "[{\"DeviceName\": \"/dev/sdh\",\"Ebs\":{\"VolumeSize\":$DISK_SIZE}}]" --iam-instance-profile Name=$S3_CONF --user-data '#!/usr/bin/bash
 
-'\"bash <( curl \"$GITHUB/ec2/sshlb-stage-haproxy-1a.sh\")"
+'\ "bash <( curl \"$GITHUB/$ENV_STATUS/ec2/sshlb-$ENV_STATUS-haproxy/sshlb-$ENV_STATUS-haproxy-1a.sh\")
+curl -o /etc/hosts $GITHUB/$ENV_STATUS/ec2/hosts
+curl -o /etc/haproxy/haproxy.cfg $GITHUB/stage/ec2/sshlb-stage-haproxy/haproxy.cfg && systemctl restart haproxy"
 
-    aws ec2 create-tags --resource $INST_ID --tag "Value=sshlb-stage-haproxy-1a,Key=Name"
+    aws ec2 create-tags --resource $INST_ID --tag "Value=sshlb-$ENV_STATUS-haproxy-1a,Key=Name"
         
 
-2) access-stage-bastion-1a => first ssh instance 
+2) access-stage-bastion-1a => first ssh instance. Change SG_ID to the security id for the group. INST_ID to instance ID. 
 
-3) access-stage-bastion-1b => second ssh instance
+    aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type $INST_TYPE --key-name $KEY_NAME --security-group-ids $SG_ID --subnet-id $SUB_ID --associate-public-ip-address --private-ip-address 10.0.1.6 --block-device-mappings "[{\"DeviceName\": \"/dev/sdh\",\"Ebs\":{\"VolumeSize\":$DISK_SIZE}}]" --iam-instance-profile Name=$S3_CONF --user-data '#!/usr/bin/bash
 
-4) dhcp-stage-dhcp-1a => our dhcp server. Will be used for assigning private IP addresses.
+'\ "bash <( curl \"$GITHUB/$ENV_STATUS/ec2/access-$ENV_STATUS-bastion/access-$ENV_STATUS-bastion-1a.sh\")
+curl -o /etc/hosts $GITHUB/$ENV_STATUS/ec2/hosts"
+   
+    INST_ID=""
+    aws ec2 create-tags --resource $INST_ID --tag "Value=access-$ENV_STATUS-bastion-1a,Key=Name"
 
+3) access-stage-bastion-1b => second ssh instance. Change INST_ID to returned instance ID.
+
+    aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type $INST_TYPE --key-name $KEY_NAME --security-group-ids $SG_ID --subnet-id $SUB_ID --associate-public-ip-address --private-ip-address 10.0.1.7 --block-device-mappings "[{\"DeviceName\": \"/dev/sdh\",\"Ebs\":{\"VolumeSize\":$DISK_SIZE}}]" --iam-instance-profile Name=$S3_CONF --user-data '#!/usr/bin/bash
+
+'\ "bash <( curl \"$GITHUB/$ENV_STATUS/ec2/access-$ENV_STATUS-bastion/access-$ENV_STATUS-bastion-1b.sh\")
+curl -o /etc/hosts $GITHUB/$ENV_STATUS/ec2/hosts"
+
+    INST_ID=""
+    aws ec2 create-tags --resource $INST_ID --tag "Value=access-$ENV_STATUS-bastion-1b,Key=Name"
+
+
+4) config-stage-puppet-1a => our puppet server. Will be used for config management. 
+
+    aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type $INST_TYPE --key-name $KEY_NAME --security-group-ids $SG_ID --subnet-id $SUB_ID --associate-public-ip-address --private-ip-address 10.0.1.14 --block-device-mappings "[{\"DeviceName\": \"/dev/sdh\",\"Ebs\":{\"VolumeSize\":$DISK_SIZE}}]" --iam-instance-profile Name=$S3_CONF --user-data '#!/usr/bin/bash
+
+'\ "yum install git -y
+   git clone $GITHUB
+   bash reddit-wiki/aws/$ENV_STATUS/ec2/config-$ENV_STATUS-puppet/config-$ENV_STATUS-puppet-1a.sh"
+
+    INST_ID="CHANGE_TO_ABOVE_RETURNED_VALUE"
+    aws ec2 create-tags --resource $INST_ID --tag "Value=config-$ENV_STATUS-puppet-1a,Key=Name"
 
 ### Bootstrapping
 
@@ -173,13 +224,10 @@ Listing things (apply Name=tag:Name,Values="myvalue" filter for any given descri
 
 ### Terraform
 
-All of the terraform templates are available in the repo. Our servers need to be able to do a couple of things in general:
 
-1) Create security groups
+### ToDo
 
-2) Change their hostname
-
-3) Bootstrap themselves to the puppet master 
+Create 10.0.1.0/24 VPC and security group.
 
 ### LINKS
 
