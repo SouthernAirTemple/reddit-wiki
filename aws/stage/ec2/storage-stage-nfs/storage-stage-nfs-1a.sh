@@ -1,8 +1,8 @@
 sh -c "echo '# /etc/cloud/cloud.cfg.d/defaults.cfg
 # cloud-config
 # hostname reverts if not added 
-hostname: config-stage-puppet-1a   
-fqdn: config-stage-puppet-1a.internal.example.com' > /etc/cloud/cloud.cfg.d/defaults.cfg"
+hostname: storage-stage-nas-1a   
+fqdn: storage-stage-nas-1a.internal.example.com' > /etc/cloud/cloud.cfg.d/defaults.cfg"
 
 # remove initial config and rerun with new defaults
 rm -fr /var/lib/cloud/instances
@@ -27,10 +27,4 @@ curl -O https://bootstrap.pypa.io/get-pip.py
 python get-pip.py
 
 pip install awscli
-
-yum install puppet-server 3.8 -y
-
-mv /reddit-wiki/aws/stage/ec2/config-stage-puppet/puppet.conf /etc/puppet/puppet.conf
-
-screen -d -m puppet master --verbose --no-daemonize
 
