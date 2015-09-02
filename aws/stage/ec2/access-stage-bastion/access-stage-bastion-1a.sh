@@ -8,3 +8,4 @@ fqdn: access-stage-bastion-1a.internal.example.com' > /etc/cloud/cloud.cfg.d/def
 rm -fr /var/lib/cloud/instances
 
 cloud-init
+bash ../defaults.sh
