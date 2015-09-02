@@ -10,4 +10,4 @@ rm -fr /var/lib/cloud/instances
 
 cloud-init
 
-bash "$DIR"../defaults.sh
+bash "$DIR"/../defaults.sh
