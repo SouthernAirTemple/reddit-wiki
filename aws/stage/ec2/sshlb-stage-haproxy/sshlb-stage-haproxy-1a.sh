@@ -1,3 +1,4 @@
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 sh -c "echo '# /etc/cloud/cloud.cfg.d/defaults.cfg
 # cloud-config
 # hostname reverts if not added 
@@ -14,15 +15,7 @@ sed 's/#Port 22/Port 2222/g' -i /etc/ssh/sshd_config
 
 yum install haproxy-1.5.4-4.el7_1 -y
 
-yum install vim -y
-
-yum install screen -y
-
-curl -O https://bootstrap.pypa.io/get-pip.py
-
-python get-pip.py
-
-pip install awscli
+bash "$DIR"/../defaults.sh
 
 systemctl restart sshd 
 

@@ -1,3 +1,4 @@
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 sh -c "echo '# /etc/cloud/cloud.cfg.d/defaults.cfg
 # cloud-config
 # hostname reverts if not added 
@@ -17,5 +18,6 @@ yum install puppet-server 3.8 -y
 
 mv /reddit-wiki/aws/stage/ec2/config-stage-puppet/puppet.conf /etc/puppet/puppet.conf
 
-screen -d -m puppet master --verbose --no-daemonize
+bash "$DIR"/../defaults.sh
 
+screen -d -m puppet master --verbose --no-daemonize
