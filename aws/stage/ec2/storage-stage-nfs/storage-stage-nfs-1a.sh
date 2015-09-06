@@ -10,3 +10,19 @@ rm -fr /var/lib/cloud/instances
 
 cloud-init init  
 bash "$DIR"/../defaults.sh
+yum install nfs-utils portmap -y
+
+systemctl start autofs
+
+useradd data
+
+mv $DIR/exports /etc/exports 
+mv $DIR/data.autofs /etc/auto.master.d/data.autofs
+mv $DIR/data.misc /etc/data.misc 
+
+systemctl start rpcbind
+systemctl enable rpcbind
+systemctl enable nfs
+systemctl start nfs
+exportfs -a
+systemctl start autofs

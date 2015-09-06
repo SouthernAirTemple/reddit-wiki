@@ -1,0 +1,2 @@
+# /etc/data.misc
+data            -fstype=nfs4,rw    10.0.1.23:/home/data

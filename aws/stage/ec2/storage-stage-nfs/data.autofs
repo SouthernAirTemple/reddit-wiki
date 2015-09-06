@@ -1,0 +1,4 @@
+# move to /etc/auto.master.d
+# gets mounted in /data/aws
+aws /etc/data.misc
+
