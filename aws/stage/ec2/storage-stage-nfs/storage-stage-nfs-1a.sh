@@ -21,7 +21,7 @@ mv $DIR/data.misc /etc/data.misc
 
 systemctl start rpcbind
 systemctl enable rpcbind
-systemctl enable nfs
+systemctl enable nfs-server
 systemctl start nfs
 exportfs -a
 systemctl start autofs
