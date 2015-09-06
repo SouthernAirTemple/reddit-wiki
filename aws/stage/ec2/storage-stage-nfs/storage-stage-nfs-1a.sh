@@ -12,7 +12,6 @@ cloud-init init
 bash "$DIR"/../defaults.sh
 yum install nfs-utils portmap -y
 yum install autofs -y
-systemctl start autofs
 
 useradd data
 
