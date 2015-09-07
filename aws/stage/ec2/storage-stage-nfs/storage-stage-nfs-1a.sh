@@ -11,8 +11,6 @@ rm -fr /var/lib/cloud/instances
 cloud-init init  
 bash "$DIR"/../defaults.sh
 yum install nfs-utils portmap -y
-yum install autofs -y
-
 useradd data
 
 mv $DIR/exports /etc/exports 

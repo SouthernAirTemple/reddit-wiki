@@ -1,3 +1,3 @@
-/home/data/configs         10.0.1.0/24(rw,sync,fsid=0)
-/home/data/files           10.0.1.0/24(rw,sync,fsid=0)
+/home/data/configs         10.0.1.14(rw,sync,fsid=0)
+/home/data/files           10.0.1.23(rw,sync,fsid=0)
 /home/data/dbs             10.0.1.0/24(rw,sync,fsid=0)

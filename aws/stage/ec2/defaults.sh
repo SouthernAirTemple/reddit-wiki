@@ -22,3 +22,6 @@ yum install ntp -y
 
 sh -c "echo '#!/bin/sh
 /usr/sbin/ntpdate pool.ntp.org' > /etc/cron.daily/ntpdate"
+
+# install autofs for creds access
+yum install autofs -y
