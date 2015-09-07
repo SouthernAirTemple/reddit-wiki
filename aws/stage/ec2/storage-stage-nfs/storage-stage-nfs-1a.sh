@@ -18,6 +18,10 @@ useradd data
 mv $DIR/exports /etc/exports 
 mv $DIR/data.autofs /etc/auto.master.d/data.autofs
 mv $DIR/data.misc /etc/data.misc 
+chmod g+s /home/data
+mkdir /home/data/files
+mkdir /home/data/configs
+mkdir /home/data/dbs
 
 systemctl start rpcbind
 systemctl enable rpcbind
