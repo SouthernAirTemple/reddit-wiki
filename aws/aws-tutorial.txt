@@ -77,36 +77,39 @@ We're going to be working with S3 here to create our backups. There will be 3 bu
 
 ### IAM 
 
-We're going to createan IAM group that'll allow S3 access and back up our wordpress database to the cloud each night. In the even a server goes away, it'll be a matter of spinning up a clone, grabbing the database, and importing the data. 
+We're going to create 3 IAM groups and users that belong to that group which'll allow S3 access and back up our wordpress database to the cloud each night. In the even a server goes away, it'll be a matter of spinning up a clone, grabbing the database, and importing the data. If a server requires both files and config access, for example, multiple profiles can be used with aws cli in ~/.aws/credentials. These credentials will be stored as their own nfs shares in /etc/exports (e.g. /data/aws/config/creds.txt, /data/aws/access/creds.txt, /data/aws/dbs/creds.txt)
 
-1) Create the access roles
+1) Create 3 new users for files, config, and dbs.
 
-    aws iam create-role --role-name S3ConfigAccess --assume-role-policy-document $GITHUB/iam/assumerole.json
+    aws iam create-user --user-name S3ConfigAccess
+    aws iam create-user --user-name S3FileAccess
+    aws iam create-user --user-name S3DBAccess
 
-    aws iam create-role --role-name S3FileAccess --assume-role-policy-document $GITHUB/iam/assumerole.json
+2) Create 3 new groups for files, config, and dbs with users added. 
+
+    aws iam create-group --group-name S3ConfigAccess
+    aws iam create-group --group-name S3FileAccess
+    aws iam create-group --group-name S3DBAccess
+
+3) Add each user created to their respective groups.
+
+    aws iam add-user-to-group --user-name S3ConfigAccess --group-name S3ConfigAccess
+    aws iam add-user-to-group --user-name S3FileAccess --group-name S3FileAccess
+    aws iam add-user-to-group --user-name S3DBAccess --group-name S3DBAccess
+
+4) Create S3 access policies
+
+    aws iam create-policy --policy-name S3ConfigAccess --policy-document $RAWGITHUB/reddit-wiki/master/aws/stage/iam/configaccess.json
+    aws iam create-policy --policy-name S3FileAccess --policy-document $RAWGITHUB/reddit-wiki/master/aws/stage/iam/fileaccess.json
+    aws iam create-policy --policy-name S3DBAccess --policy-document $RAWGITHUB/reddit-wiki/master/aws/stage/iam/dbaccess.json
+
+5) Attach access policies to group polices
+
+    aws iam list-policies 2>&1|grep S3ConfigAccess
+    aws iam attach-group-policy --group-name S3ConfigAccess --policy-arn arn:aws:iam::$IAM_ARN_ID:policy/S3ConfigAccess
+    aws iam attach-group-policy --group-name S3FileAccess --policy-arn arn:aws:iam::$IAM_ARN_ID:policy/S3FileAccess
+    aws iam attach-group-policy --group-name S3DBAccess --policy-arn arn:aws:iam::$IAM_ARN_ID:policy/S3DBAccess
     
-    aws iam create-role --role-name S3DBAccess --assume-role-policy-document $GITHUB/iam/assumerole.json
-
-2) Attach the policy to grant access to s3 for our access roles
-
-    aws iam put-role-policy --role-name S3FileAccess --policy-name S3FileAccess --policy-document $GITHUB/iam/fileaccess.json 
-
-    aws iam put-role-policy --role-name S3DBAccess --policy-name S3DBAccess --policy-document $GITHUB/iam/dbaccess.json
-
-    aws iam put-role-policy --role-name S3ConfigAccess --policy-name S3ConfigAccess --policy-document $GITHUB/iam/configaccess.json
-
-3) Create instance profile 
-
-    aws iam create-instance-profile --instance-profile-name S3ConfigAccess 
-    aws iam create-instance-profile --instance-profile-name S3FileAccess 
-    aws iam create-instance-profile --instance-profile-name S3DBAccess 
-
-4) Add role to instance profile
-
-    aws iam add-role-to-instance-profile --instance-profile-name S3ConfigAccess --role-name S3ConfigAccess
-    aws iam add-role-to-instance-profile --instance-profile-name S3FileAccess --role-name S3FileAccess
-    aws iam add-role-to-instance-profile --instance-profile-name S3DBAccess --role-name S3DBAccess
-
 
 ### SECURITY GROUPS
 
@@ -140,6 +143,10 @@ Create the following security groups policies. SG_ID should be changed as needed
     aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 443 --cidr $STAGE_NET
     aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 61613 --cidr $STAGE_NET
 
+5) storage-$ENV_STATUS-nfs-1a
+
+    aws ec2 create-security-group --group-name storage-$ENV_STATUS-nfs --description "nfs security group" --vpc-id $VPC_ID
+
 dhcp-$ENV_STATUS-dhcp => allow 22 from access-$ENV_STATUS-bastion. All for 67 and 68. All from monit-$ENV_SATUS-nagios. 
 weblb-$ENV_STATUS-haproxy => allow all on port 80, 443. Allow 22 from access-$ENV_STATUS-bastion. All from monit-$ENV_STATUS-nagios.
 web-$ENV_STATUS-nginx => allow 443,80 from weblb-$ENV_STATUS-haproxy. All from monit-$ENV_STATUS-nagios.
@@ -152,9 +159,13 @@ db-$ENV_STATUS-galera => allow 3306 from web-$ENV_STATUS-nginx. All from monit-$
     SG_ID=""
     aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type $INST_TYPE --key-name $KEY_NAME --security-group-ids $SG_ID --subnet-id $SUB_ID --associate-public-ip-address --private-ip-address 10.0.1.4 --block-device-mappings "[{\"DeviceName\": \"/dev/sdh\",\"Ebs\":{\"VolumeSize\":$DISK_SIZE}}]" --iam-instance-profile Name=$S3_CONF --user-data '#!/usr/bin/bash
 
-'\ "bash <( curl \"$GITHUB/$ENV_STATUS/ec2/sshlb-$ENV_STATUS-haproxy/sshlb-$ENV_STATUS-haproxy-1a.sh\")
-curl -o /etc/hosts $GITHUB/$ENV_STATUS/ec2/hosts
-curl -o /etc/haproxy/haproxy.cfg $GITHUB/stage/ec2/sshlb-stage-haproxy/haproxy.cfg && systemctl restart haproxy"
+'\ "yum install git -y
+   git clone $GITREPO
+   bash reddit-wiki/aws/$ENV_STATUS/ec2/defaults.sh
+   bash reddit-wiki/aws/$ENV_STATUS/ec2/sshlb-$ENV_STATUS-haproxy/sshlb-$ENV_STATUS-haproxy-1a.sh
+   mv reddit-wiki/aws/$ENV_STATUS/ec2/hosts /etc/hosts
+
+   mv $GITHUB/stage/ec2/sshlb-stage-haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg && systemctl restart haproxy"
 
     aws ec2 create-tags --resource $INST_ID --tag "Value=sshlb-$ENV_STATUS-haproxy-1a,Key=Name"
         
@@ -163,20 +174,24 @@ curl -o /etc/haproxy/haproxy.cfg $GITHUB/stage/ec2/sshlb-stage-haproxy/haproxy.c
 
     aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type $INST_TYPE --key-name $KEY_NAME --security-group-ids $SG_ID --subnet-id $SUB_ID --associate-public-ip-address --private-ip-address 10.0.1.6 --block-device-mappings "[{\"DeviceName\": \"/dev/sdh\",\"Ebs\":{\"VolumeSize\":$DISK_SIZE}}]" --iam-instance-profile Name=$S3_CONF --user-data '#!/usr/bin/bash
 
-'\ "bash <( curl \"$GITHUB/$ENV_STATUS/ec2/access-$ENV_STATUS-bastion/access-$ENV_STATUS-bastion-1a.sh\")
-curl -o /etc/hosts $GITHUB/$ENV_STATUS/ec2/hosts"
+'\ "yum install git -y
+   git clone $GITREPO
+   bash reddit-wiki/aws/$ENV_STATUS/ec2/defaults.sh
+   bash reddit-wiki/aws/$ENV_STATUS/ec2/access-$ENV_STATUS-bastion/access-$ENV_STATUS-bastion-1a.sh
+   mv reddit-wiki/aws/$ENV_STATUS/ec2/hosts /etc/hosts"
    
     INST_ID=""
     aws ec2 create-tags --resource $INST_ID --tag "Value=access-$ENV_STATUS-bastion-1a,Key=Name"
 
-3) access-stage-bastion-1b => second ssh instance. Change INST_ID to returned instance ID.
+    aws ec2 create-image --instance-id $INST_ID --name access-stage-bastion-1a
 
+3) access-stage-bastion-1b => second ssh instance. Change AMI_ID to AMI ID for access-stage-bastion-1a. Change INST_ID to returned instance ID.
+
+    AMI_ID="CHANGE_TO_ABOVE"
     aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type $INST_TYPE --key-name $KEY_NAME --security-group-ids $SG_ID --subnet-id $SUB_ID --associate-public-ip-address --private-ip-address 10.0.1.7 --block-device-mappings "[{\"DeviceName\": \"/dev/sdh\",\"Ebs\":{\"VolumeSize\":$DISK_SIZE}}]" --iam-instance-profile Name=$S3_CONF --user-data '#!/usr/bin/bash
-
-'\ "bash <( curl \"$GITHUB/$ENV_STATUS/ec2/access-$ENV_STATUS-bastion/access-$ENV_STATUS-bastion-1b.sh\")
-curl -o /etc/hosts $GITHUB/$ENV_STATUS/ec2/hosts"
-
-    INST_ID=""
+    hostnamectl set-hostname access-stage-bastion-1b
+'\ "
+    INST_ID="CHANGE_TO_ABOVE"
     aws ec2 create-tags --resource $INST_ID --tag "Value=access-$ENV_STATUS-bastion-1b,Key=Name"
 
 
@@ -185,8 +200,22 @@ curl -o /etc/hosts $GITHUB/$ENV_STATUS/ec2/hosts"
     aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type $INST_TYPE --key-name $KEY_NAME --security-group-ids $SG_ID --subnet-id $SUB_ID --associate-public-ip-address --private-ip-address 10.0.1.14 --block-device-mappings "[{\"DeviceName\": \"/dev/sdh\",\"Ebs\":{\"VolumeSize\":$DISK_SIZE}}]" --iam-instance-profile Name=$S3_CONF --user-data '#!/usr/bin/bash
 
 '\ "yum install git -y
-   git clone $GITHUB
+   git clone $GITREPO
+   bash reddit-wiki/aws/$ENV_STATUS/ec2/defaults.sh
    bash reddit-wiki/aws/$ENV_STATUS/ec2/config-$ENV_STATUS-puppet/config-$ENV_STATUS-puppet-1a.sh"
+
+    INST_ID="CHANGE_TO_ABOVE_RETURNED_VALUE"
+    aws ec2 create-tags --resource $INST_ID --tag "Value=config-$ENV_STATUS-puppet-1a,Key=Name"
+
+5) storage-stage-nfs-1a => this server will be used to store credentials and other temporary information. 
+
+
+    aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type $INST_TYPE --key-name $KEY_NAME --security-group-ids $SG_ID --subnet-id $SUB_ID --associate-public-ip-address --private-ip-address 10.0.1.23 --block-device-mappings "[{\"DeviceName\": \"/dev/sdh\",\"Ebs\":{\"VolumeSize\":$DISK_SIZE}}]" --iam-instance-profile Name=$S3_CONF --user-data '#!/usr/bin/bash
+
+'\ "yum install git -y
+   git clone $GITREPO
+   bash reddit-wiki/aws/$ENV_STATUS/ec2/defaults.sh
+   bash reddit-wiki/aws/$ENV_STATUS/ec2/storage-$ENV_STATUS-nfs/storage-$ENV_STATUS-nfs-1a.sh"
 
     INST_ID="CHANGE_TO_ABOVE_RETURNED_VALUE"
     aws ec2 create-tags --resource $INST_ID --tag "Value=config-$ENV_STATUS-puppet-1a,Key=Name"
@@ -214,6 +243,14 @@ Listing things (apply Name=tag:Name,Values="myvalue" filter for any given descri
 3) List instance state 
 
     aws ec2 describe-instance-status --instance-ids $INST_ID --output text --query 'InstanceStatuses[*].InstanceState'
+
+4) List groups of servers
+
+    aws ec2 describe-instances 2>&1|grep access -B30|egrep -i "instances|tags" |awk '{print $7, $3}'|awk '{print $1}'
+
+    aws ec2 describe-instances 2>&1|grep access -B30|egrep -i "instances|tags" |awk '{print $7}'|awk '{print $1}'|egrep "[a-z]|[0-9]"
+
+
 
 ### Fixing mistakes 
 
