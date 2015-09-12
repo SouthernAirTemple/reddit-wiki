@@ -1,4 +1,6 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+NFS_STATUS="$(echo exit|telnet storage-stage-nfs-1a 111 2>&1|grep Connected|awk '{print $1}')" 
+
 sh -c "echo '# /etc/cloud/cloud.cfg.d/defaults.cfg
 # cloud-config
 # hostname reverts if not added 
@@ -21,3 +23,9 @@ mv /reddit-wiki/aws/stage/ec2/config-stage-puppet/puppet.conf /etc/puppet/puppet
 bash "$DIR"/../defaults.sh
 
 screen -d -m puppet master --verbose --no-daemonize
+
+if [[ $NFS_STATUS == "Connected" ]]
+then
+    printf "$(touch /tmp/no_pack_loss.txt)"
+fi
+
