@@ -1,5 +1,6 @@
 #!/usr/bin/bash
 # this will install packages and software as well as run commands required by every instance before puppet is available. 
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # turn off selinux as is active with ami
 sed 's/SELINUX=enabled/SELINUX=disabled/g' -i /etc/selinux/config
@@ -25,3 +26,5 @@ sh -c "echo '#!/bin/sh
 
 # install autofs for creds access
 yum install autofs -y
+
+mv $DIR/hosts /etc/hosts
