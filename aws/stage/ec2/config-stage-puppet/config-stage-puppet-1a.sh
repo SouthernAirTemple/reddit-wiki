@@ -26,6 +26,9 @@ screen -d -m puppet master --verbose --no-daemonize
 
 if [[ $NFS_STATUS == "Connected" ]]
 then
-    printf "$(touch /tmp/no_pack_loss.txt)"
+    mv $DIR/data.autofs /etc/auto.master.d/data.autofs
+    mv $DIR/data.misc /etc/data.misc 
+    systemctl start autofs    
 fi
 
+systemctl enable autofs
