@@ -21,6 +21,7 @@ pip install awscli
 
 yum install ntp -y
 
+yum install telnet -y
 sh -c "echo '#!/bin/sh
 /usr/sbin/ntpdate pool.ntp.org' > /etc/cron.daily/ntpdate"
 
