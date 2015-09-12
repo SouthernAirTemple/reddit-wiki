@@ -28,4 +28,6 @@ sh -c "echo '#!/bin/sh
 # install autofs for creds access
 yum install autofs -y
 
+yum install nfs-utils -y
+
 mv $DIR/hosts /etc/hosts
