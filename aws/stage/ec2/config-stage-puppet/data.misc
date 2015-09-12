@@ -1,0 +1,2 @@
+# /etc/data.misc
+aws/configs            -fstype=nfs4,rw    storage-stage-nfs-1a:/home/data
