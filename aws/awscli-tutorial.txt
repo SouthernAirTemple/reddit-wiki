@@ -79,7 +79,7 @@ We're going to be working with S3 here to create our backups. There will be 3 bu
 
 We're going to create 3 IAM groups and users that belong to that group which'll allow S3 access and back up our wordpress database to the cloud each night. In the even a server goes away, it'll be a matter of spinning up a clone, grabbing the database, and importing the data. If a server requires both files and config access, for example, multiple profiles can be used with aws cli in ~/.aws/credentials. These credentials will be stored as their own nfs shares in /etc/exports (e.g. /data/aws/config/creds.txt, /data/aws/access/creds.txt, /data/aws/dbs/creds.txt)
 
-1) Create 3 new users for files, config, and dbs.
+1) Create 4 new users for files, config, and dbs.
 
     aws iam create-user --user-name S3ConfigAccess
     aws iam create-user --user-name S3FileAccess
@@ -110,6 +110,11 @@ We're going to create 3 IAM groups and users that belong to that group which'll 
     aws iam attach-group-policy --group-name S3FileAccess --policy-arn arn:aws:iam::$IAM_ARN_ID:policy/S3FileAccess
     aws iam attach-group-policy --group-name S3DBAccess --policy-arn arn:aws:iam::$IAM_ARN_ID:policy/S3DBAccess
     
+6) Add policies to respective storage-stage-nfs folders.
+
+    aws iam create-access-key --user-name S3ConfigAccess
+    aws iam create-access-key --user-name S3DBAccess
+    aws iam create-access-key --user-name S3FileAccess
 
 ### SECURITY GROUPS
 
@@ -143,9 +148,8 @@ Create the following security groups policies. SG_ID should be changed as needed
     aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 443 --cidr $STAGE_NET
     aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 61613 --cidr $STAGE_NET
 
-5) storage-$ENV_STATUS-nfs-1a
-
-    aws ec2 create-security-group --group-name storage-$ENV_STATUS-nfs --description "nfs security group" --vpc-id $VPC_ID
+5) storage-$ENV_STATUS-nfs-1a. Allow all on internal subnet access to nfs server. 
+    aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol all --cidr $STAGE_NET
 
 dhcp-$ENV_STATUS-dhcp => allow 22 from access-$ENV_STATUS-bastion. All for 67 and 68. All from monit-$ENV_SATUS-nagios. 
 weblb-$ENV_STATUS-haproxy => allow all on port 80, 443. Allow 22 from access-$ENV_STATUS-bastion. All from monit-$ENV_STATUS-nagios.
@@ -163,9 +167,7 @@ db-$ENV_STATUS-galera => allow 3306 from web-$ENV_STATUS-nginx. All from monit-$
    git clone $GITREPO
    bash reddit-wiki/aws/$ENV_STATUS/ec2/defaults.sh
    bash reddit-wiki/aws/$ENV_STATUS/ec2/sshlb-$ENV_STATUS-haproxy/sshlb-$ENV_STATUS-haproxy-1a.sh
-   mv reddit-wiki/aws/$ENV_STATUS/ec2/hosts /etc/hosts
-
-   mv $GITHUB/stage/ec2/sshlb-stage-haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg && systemctl restart haproxy"
+   mv reddit-wiki/aws/$ENV_STATUS/ec2/hosts /etc/hosts"
 
     aws ec2 create-tags --resource $INST_ID --tag "Value=sshlb-$ENV_STATUS-haproxy-1a,Key=Name"
         
@@ -220,6 +222,10 @@ db-$ENV_STATUS-galera => allow 3306 from web-$ENV_STATUS-nginx. All from monit-$
     INST_ID="CHANGE_TO_ABOVE_RETURNED_VALUE"
     aws ec2 create-tags --resource $INST_ID --tag "Value=config-$ENV_STATUS-puppet-1a,Key=Name"
 
+5b) Add credentials to storage-stage-nfs-1a folders for s3 in credentials.txt file. Create image.
+
+    aws ec2 create-image --instance-id $INST_ID --name storage-stage-nfs-1a 
+     
 ### Bootstrapping
 
 Our instances need to be able to do two things: change their hostnames. Bootstrap themselves to the master. 
